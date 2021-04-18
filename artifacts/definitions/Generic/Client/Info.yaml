@@ -32,8 +32,7 @@ sources:
   - name: Users
     precondition: SELECT OS From info() where OS = 'windows'
     queries:
-      - SELECT Name, Description,
-               if(condition=Mtime, then=timestamp(epoch=Mtime)) AS LastLogin
+      - SELECT Name, Description, Mtime AS LastLogin
         FROM Artifact.Windows.Sys.Users()
 
 reports:
@@ -54,7 +53,6 @@ reports:
                   RSS / 1000000 AS MemoryUse
            FROM source(artifact="Generic.Client.Stats",
                        client_id=ClientId,
-                       mode="CLIENT_EVENT",
                        start_time=now() - 86400)
            WHERE CPUPercent >= 0
       {{ end }}

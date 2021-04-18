@@ -62,14 +62,10 @@ func ForemanProcessMessage(
 
 	// Update the client's event tables.
 	client_event_manager := services.ClientEventManager()
-	if client_event_manager == nil {
-		// Not really an error - this happens when the server
-		// shuts down.
-		return nil
-	}
-
-	if client_event_manager.CheckClientEventsVersion(
-		config_obj, client_id, foreman_checkin.LastEventTableVersion) {
+	if client_event_manager != nil &&
+		client_event_manager.CheckClientEventsVersion(
+			config_obj, client_id,
+			foreman_checkin.LastEventTableVersion) {
 		err := QueueMessageForClient(
 			config_obj, client_id,
 			client_event_manager.GetClientUpdateEventTableMessage(
@@ -134,8 +130,7 @@ func ForemanProcessMessage(
 		err = journal.PushRowsToArtifact(config_obj,
 			[]*ordereddict.Dict{ordereddict.NewDict().
 				Set("HuntId", hunt.HuntId).
-				Set("ClientId", client_id).
-				Set("Participate", true),
+				Set("ClientId", client_id),
 			}, "System.Hunt.Participation", client_id, "")
 		if err != nil {
 			return err
@@ -147,25 +142,20 @@ func ForemanProcessMessage(
 	}
 
 	// Let the client know it needs to update its foreman state to
-	// the latest time.
-	err = QueueMessageForClient(
+	// the latest time. We schedule an UpdateForeman message for
+	// the client. Note that it is possible that the client does
+	// not update its timestamp immediately and therefore might
+	// end up sending multiple participation events to the hunt
+	// manager - this is ok since the hunt manager keeps hunt
+	// participation index and will automatically skip multiple
+	// messages.
+	return QueueMessageForClient(
 		config_obj, client_id,
-		&crypto_proto.GrrMessage{
+		&crypto_proto.VeloMessage{
 			SessionId: constants.MONITORING_WELL_KNOWN_FLOW,
 			RequestId: constants.IgnoreResponseState,
 			UpdateForeman: &actions_proto.ForemanCheckin{
 				LastHuntTimestamp: latest_timestamp,
 			},
 		})
-	if err != nil {
-		return err
-	}
-
-	notifier := services.GetNotifier()
-	if notifier == nil {
-		return errors.New("Notifier not configured")
-	}
-
-	// Notify the client so it can pick up the new jobs
-	return services.GetNotifier().NotifyListener(config_obj, client_id)
 }

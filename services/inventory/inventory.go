@@ -38,7 +38,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"path"
 	"sync"
@@ -55,6 +54,7 @@ import (
 	"www.velocidex.com/golang/velociraptor/paths"
 	"www.velocidex.com/golang/velociraptor/services"
 	"www.velocidex.com/golang/velociraptor/utils"
+	"www.velocidex.com/golang/velociraptor/vql/networking"
 )
 
 type HTTPClient interface {
@@ -345,21 +345,10 @@ func StartInventoryService(
 		Clock:    utils.RealClock{},
 		binaries: &artifacts_proto.ThirdParty{},
 		db:       datastore.NewTestDataStore(),
-		Client: &http.Client{
-			Transport: &http.Transport{
-				DialContext: (&net.Dialer{
-					Timeout:   300 * time.Second,
-					KeepAlive: 300 * time.Second,
-					DualStack: true,
-				}).DialContext,
-				MaxIdleConns:          100,
-				IdleConnTimeout:       300 * time.Second,
-				TLSHandshakeTimeout:   100 * time.Second,
-				ExpectContinueTimeout: 10 * time.Second,
-				ResponseHeaderTimeout: 100 * time.Second,
-			},
-		},
+		// Use the VQL http client so it can accept the same certs.
+		Client: networking.GetHttpClient(config_obj.Client, nil),
 	}
+	services.RegisterInventory(inventory_service)
 
 	db, err := datastore.GetDB(config_obj)
 	if err != nil {
@@ -409,7 +398,6 @@ func StartInventoryService(
 
 	logger.Info("<green>Starting</> Inventory Service")
 
-	services.RegisterInventory(inventory_service)
 	_ = inventory_service.LoadFromFile(config_obj)
 
 	return nil

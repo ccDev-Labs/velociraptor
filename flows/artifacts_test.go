@@ -215,7 +215,7 @@ func (self *TestSuite) TestRetransmission() {
 	assert.NoError(self.T(), err)
 
 	// Send one row.
-	message := &crypto_proto.GrrMessage{
+	message := &crypto_proto.VeloMessage{
 		Source:     self.client_id,
 		SessionId:  flow_id,
 		RequestId:  1,
@@ -284,10 +284,13 @@ func (self *TestSuite) TestResourceLimits() {
 	messages, err := db.GetClientTasks(self.config_obj, self.client_id,
 		false /* do_not_lease */)
 	assert.NoError(self.T(), err)
-	assert.Equal(self.T(), len(messages), 1)
+
+	// Two requests since there are two source preconditions on
+	// Generic.Client.Info
+	assert.Equal(self.T(), len(messages), 2)
 
 	// Send one row.
-	message := &crypto_proto.GrrMessage{
+	message := &crypto_proto.VeloMessage{
 		Source:     self.client_id,
 		SessionId:  flow_id,
 		RequestId:  1,
@@ -326,7 +329,7 @@ func (self *TestSuite) TestResourceLimits() {
 		self.client_id, flow_id)
 	assert.NoError(self.T(), err)
 
-	// Collection has 1 row and it is still in the running state.
+	// Collection has 2 rows and it is still in the running state.
 	assert.Equal(self.T(), collection_context.TotalCollectedRows, uint64(2))
 	assert.Equal(self.T(), collection_context.State,
 		flows_proto.ArtifactCollectorContext_RUNNING)
@@ -344,7 +347,7 @@ func (self *TestSuite) TestResourceLimits() {
 		self.client_id, flow_id)
 	assert.NoError(self.T(), err)
 
-	// Collection has 1 row and it is still in the running state.
+	// Collection has 7 rows and it is still in the running state.
 	assert.Equal(self.T(), collection_context.TotalCollectedRows, uint64(7))
 	assert.Equal(self.T(), collection_context.State,
 		flows_proto.ArtifactCollectorContext_ERROR)

@@ -137,12 +137,7 @@ type serverLogger struct {
 // need to be available immediately.
 func (self *serverLogger) Write(b []byte) (int, error) {
 	msg := artifacts.DeobfuscateString(self.config_obj, string(b))
-	journal, err := services.GetJournal()
-	if err != nil {
-		return 0, err
-	}
-
-	err = journal.PushRows(self.config_obj,
+	err := file_store.PushRows(self.config_obj,
 		self.path_manager, []*ordereddict.Dict{
 			ordereddict.NewDict().
 				Set("Timestamp", time.Now().UTC().UnixNano()/1000).
@@ -212,7 +207,7 @@ func (self *ServerArtifactsRunner) cancel(flow_id string) {
 func (self *ServerArtifactsRunner) processTask(
 	ctx context.Context,
 	config_obj *config_proto.Config,
-	task *crypto_proto.GrrMessage) error {
+	task *crypto_proto.VeloMessage) error {
 
 	collection_context, err := NewCollectionContext(
 		self.config_obj, "server", task.SessionId)
@@ -229,16 +224,12 @@ func (self *ServerArtifactsRunner) processTask(
 	// Cancel the current collection
 	if task.Cancel != nil {
 		path_manager := paths.NewFlowPathManager("server", task.SessionId).Log()
-		journal, err := services.GetJournal()
-		if err != nil {
-			return err
-		}
-
-		err = journal.PushRows(config_obj, path_manager, []*ordereddict.Dict{
-			ordereddict.NewDict().
-				Set("Timestamp", time.Now().UTC().UnixNano()/1000).
-				Set("time", time.Now().UTC().String()).
-				Set("message", "Cancelling Query")})
+		err = file_store.PushRows(config_obj,
+			path_manager, []*ordereddict.Dict{
+				ordereddict.NewDict().
+					Set("Timestamp", time.Now().UTC().UnixNano()/1000).
+					Set("time", time.Now().UTC().String()).
+					Set("message", "Cancelling Query")})
 
 		// This task is now done.
 		self.cancel(task.SessionId)
@@ -275,7 +266,7 @@ func (self *ServerArtifactsRunner) processTask(
 
 func (self *ServerArtifactsRunner) runQuery(
 	ctx context.Context,
-	task *crypto_proto.GrrMessage,
+	task *crypto_proto.VeloMessage,
 	collection_context *contextManager) error {
 
 	// Set up the logger for writing query logs. Note this must be
@@ -290,8 +281,13 @@ func (self *ServerArtifactsRunner) runQuery(
 		return errors.New("Query should be specified")
 	}
 
+	timeout := time.Duration(arg.Timeout) * time.Second
+	if timeout == 0 {
+		timeout = self.timeout
+	}
+
 	// Cancel the query after this deadline
-	deadline := time.After(self.timeout)
+	deadline := time.After(timeout)
 	collection_context.Modify(
 		func(context *flows_proto.ArtifactCollectorContext) {
 			context.StartTime = uint64(time.Now().UnixNano() / 1000)

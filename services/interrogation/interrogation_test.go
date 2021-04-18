@@ -16,8 +16,8 @@ import (
 	"www.velocidex.com/golang/velociraptor/file_store/test_utils"
 	flows_proto "www.velocidex.com/golang/velociraptor/flows/proto"
 	"www.velocidex.com/golang/velociraptor/paths"
-	"www.velocidex.com/golang/velociraptor/paths/artifacts"
 	"www.velocidex.com/golang/velociraptor/services"
+	"www.velocidex.com/golang/velociraptor/services/client_info"
 	"www.velocidex.com/golang/velociraptor/services/inventory"
 	"www.velocidex.com/golang/velociraptor/services/journal"
 	"www.velocidex.com/golang/velociraptor/services/labels"
@@ -46,7 +46,7 @@ func (self *ServicesTestSuite) SetupTest() {
 	// Start essential services.
 	ctx, _ := context.WithTimeout(context.Background(), time.Second*60)
 	self.sm = services.NewServiceManager(ctx, self.config_obj)
-
+	require.NoError(self.T(), self.sm.Start(client_info.StartClientInfoService))
 	require.NoError(self.T(), self.sm.Start(journal.StartJournalService))
 	require.NoError(self.T(), self.sm.Start(notifications.StartNotificationService))
 	require.NoError(self.T(), self.sm.Start(inventory.StartInventoryService))
@@ -144,15 +144,15 @@ func (self *ServicesTestSuite) TestEnrollService() {
 	// enrollment messages are being written before the client is
 	// able to be enrolled. We should always generate only a
 	// single interrogate flow if the client is not known.
-	path_manager := artifacts.NewArtifactPathManager(
-		self.config_obj, "server" /* client_id */, "", "Server.Internal.Enrollment")
-
 	journal, err := services.GetJournal()
 	assert.NoError(self.T(), err)
 
-	err = journal.PushRows(self.config_obj,
-		path_manager, []*ordereddict.Dict{
-			enroll_message, enroll_message, enroll_message, enroll_message})
+	err = journal.PushRowsToArtifact(self.config_obj,
+		[]*ordereddict.Dict{
+			enroll_message, enroll_message, enroll_message, enroll_message,
+		},
+		"Server.Internal.Enrollment",
+		"server", "")
 	assert.NoError(self.T(), err)
 
 	// Wait here until the client is enrolled

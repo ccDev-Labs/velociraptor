@@ -149,6 +149,11 @@ func (self ResultSetFactory) NewResultSetWriter(
 		return nil, err
 	}
 
+	// If no path is provided, we are just a log sink
+	if log_path == "" {
+		return &NullResultSetWriter{}, nil
+	}
+
 	fd, err := file_store_factory.WriteFile(log_path)
 	if err != nil {
 		return nil, err
@@ -334,7 +339,7 @@ func (self ResultSetFactory) NewResultSetReader(
 	}
 
 	fd, err := file_store_factory.ReadFile(log_path)
-	if err == io.EOF || os.IsNotExist(errors.Cause(err)) {
+	if err == io.EOF || errors.Is(err, os.ErrNotExist) {
 		fd = &NullReader{bytes.NewReader([]byte{})}
 	} else if err != nil {
 		return nil, err

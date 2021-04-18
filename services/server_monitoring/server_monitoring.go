@@ -102,8 +102,7 @@ func (self *EventTable) Update(
 	// goroutine.
 	vql_requests, err := launcher.CompileCollectorArgs(
 		ctx, config_obj, acl_manager, repository,
-		false, /* should_obfuscate */
-		request)
+		services.CompilerOptions{}, request)
 	if err != nil {
 		return err
 	}
@@ -247,9 +246,7 @@ func StartServerMonitoringService(
 
 	artifacts := &flows_proto.ArtifactCollectorArgs{}
 	err = db.GetSubject(
-		config_obj,
-		constants.ServerMonitoringFlowURN,
-		artifacts)
+		config_obj, constants.ServerMonitoringFlowURN, artifacts)
 	if err != nil || artifacts.Artifacts == nil {
 		// No monitoring rules found, set defaults.
 		artifacts = proto.Clone(

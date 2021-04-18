@@ -91,7 +91,9 @@ var (
 						Set("Custom.TestArtifactDependent", ordereddict.NewDict().
 				// This will be injected into the output zip by the below artifact.
 				Set("FooVar", "HelloFooVar"))).
-		Set("artifact_definitions", `
+		Set("artifact_definitions", CustomTestArtifactDependent)
+
+	CustomTestArtifactDependent = `
 name: Custom.TestArtifactDependent
 parameters:
 - name: FooVar
@@ -104,8 +106,7 @@ reports:
      This is a template.
      {{ Query "SELECT * FROM source()" | Table }}
 
-`)
-
+`
 	uploadArtifactCollectorArgs = ordereddict.NewDict().
 					Set("artifacts", []string{"Custom.TestArtifactUpload"}).
 					Set("artifact_definitions", `
@@ -167,7 +168,7 @@ func (self *TestSuite) TestSimpleCollection() {
 	acl_manager := vql_subsystem.NullACLManager{}
 	vql_requests, err := launcher.CompileCollectorArgs(
 		context.Background(), self.config_obj, acl_manager, repository,
-		false /* should_obfuscate */, request)
+		services.CompilerOptions{}, request)
 
 	serialized, err := json.MarshalIndent(ordereddict.NewDict().
 		Set("ArtifactCollectorArgs", request).
@@ -181,6 +182,7 @@ func (self *TestSuite) TestCollectionWithArtifacts() {
 	output_file, err := ioutil.TempFile(os.TempDir(), "zip")
 	assert.NoError(self.T(), err)
 	output_file.Close()
+
 	defer os.Remove(output_file.Name())
 
 	report_file, err := ioutil.TempFile(os.TempDir(), "html")

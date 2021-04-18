@@ -22,7 +22,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -99,6 +101,7 @@ func (self *Server) adjustConcurrency(
 		}
 
 		// Adjust concurrency
+		self.logger.Debug("Adjusting concurrency from %v to %v", concurrency, new_concurrency)
 		concurrency = new_concurrency
 
 		// We are using up less memory than
@@ -113,6 +116,7 @@ func (self *Server) adjustConcurrency(
 		}
 
 		// Adjust concurrency
+		self.logger.Debug("Adjusting concurrency from %v to %v", concurrency, concurrency+delta)
 		concurrency += delta
 
 	} else {
@@ -122,6 +126,7 @@ func (self *Server) adjustConcurrency(
 	}
 
 	// Install the new concurrency controller.
+
 	targetConcurrency.Set(float64(concurrency))
 	heapSize.Set(float64(s.Alloc))
 	self.mu.Lock()
@@ -137,7 +142,6 @@ func (self *Server) ManageConcurrency(max_concurrency uint64, target_heap_size u
 
 	for {
 		new_concurrency := self.adjustConcurrency(max_concurrency, target_heap_size, concurrency)
-		self.logger.Debug("Adjusting concurrency from %v to %v", concurrency, new_concurrency)
 		concurrency = new_concurrency
 
 		// Wait for a minute and check again.
@@ -215,7 +219,7 @@ func NewServer(config_obj *config_proto.Config) (*Server, error) {
 // authenticated.
 func (self *Server) ProcessSingleUnauthenticatedMessage(
 	ctx context.Context,
-	message *crypto_proto.GrrMessage) {
+	message *crypto_proto.VeloMessage) {
 	if message.CSR != nil {
 		err := enroll(ctx, self.config, self, message.CSR)
 		if err != nil {
@@ -288,13 +292,21 @@ func (self *Server) Process(
 	return response, len(message_list.Job), nil
 }
 
-func (self *Server) DrainRequestsForClient(client_id string) []*crypto_proto.GrrMessage {
+func (self *Server) DrainRequestsForClient(client_id string) []*crypto_proto.VeloMessage {
 	result, err := self.db.GetClientTasks(self.config, client_id, false)
 	if err == nil {
 		return result
 	}
 
-	return []*crypto_proto.GrrMessage{}
+	return []*crypto_proto.VeloMessage{}
+}
+
+// Fatal error - terminate immediately.
+func (self *Server) Fatal(msg string, err error) {
+	message := fmt.Sprintf(msg, err)
+	message += "\n" + string(debug.Stack())
+	self.logger.Error(message)
+	os.Exit(-1)
 }
 
 func (self *Server) Error(msg string, err error) {

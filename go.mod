@@ -13,8 +13,9 @@ require (
 	github.com/Velocidex/cgofuse v1.1.2
 	github.com/Velocidex/go-elasticsearch/v7 v7.3.1-0.20191001125819-fee0ef9cac6b
 	github.com/Velocidex/go-yara v1.1.10-0.20210105022745-1b550dfa67da
-	github.com/Velocidex/json v0.0.0-20200724131328-8f5c7b0a25ec
+	github.com/Velocidex/json v0.0.0-20210402154432-68206e1293d0
 	github.com/Velocidex/ordereddict v0.0.0-20200723153557-9460a6764ab8
+	github.com/Velocidex/sflags v0.3.1-0.20210402155316-b09f53df5162 // indirect
 	github.com/Velocidex/survey v1.8.7-0.20190926071832-2ff99cc7aa49
 	github.com/Velocidex/yaml/v2 v2.2.5
 	github.com/Velocidex/zip v0.0.0-20210101070220-e7ecefb7aad7
@@ -22,6 +23,7 @@ require (
 	github.com/alecthomas/assert v0.0.0-20170929043011-405dbfeb8e38
 	github.com/alecthomas/chroma v0.7.2
 	github.com/alecthomas/participle v0.7.1
+	github.com/alecthomas/repr v0.0.0-20210301060118-828286944d6a // indirect
 	github.com/alexmullins/zip v0.0.0-20180717182244-4affb64b04d0
 	github.com/aws/aws-sdk-go v1.26.7
 	github.com/bi-zone/etw v0.0.0-20200916105032-b215904fae4f
@@ -96,6 +98,8 @@ require (
 	golang.org/x/net v0.0.0-20210119194325-5f4716e94777
 	golang.org/x/oauth2 v0.0.0-20210220000619-9bb904979d93
 	golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c
+	golang.org/x/text v0.3.6 // indirect
+	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba // indirect
 	golang.org/x/tools v0.0.0-20200828161849-5deb26317202 // indirect
 	google.golang.org/api v0.30.0
 	google.golang.org/genproto v0.0.0-20210224155714-063164c882e6
@@ -115,8 +119,8 @@ require (
 	www.velocidex.com/golang/go-prefetch v0.0.0-20200722101157-37e4751dd5ca
 	www.velocidex.com/golang/oleparse v0.0.0-20190327031422-34195d413196
 	www.velocidex.com/golang/regparser v0.0.0-20190625082115-b02dc43c2500
-	www.velocidex.com/golang/vfilter v0.0.0-20210220121641-879064f4499e
-	www.velocidex.com/golang/vtypes v0.0.0-20210116160458-a505b35bdfb8
+	www.velocidex.com/golang/vfilter v0.0.0-20210406162709-d40800885aff
+	www.velocidex.com/golang/vtypes v0.0.0-20210323032031-b61f37170666
 )
 
 // replace www.velocidex.com/golang/go-pe => /home/mic/projects/go-pe
@@ -129,10 +133,12 @@ require (
 // replace github.com/Velocidex/json => /home/mic/projects/json
 // replace github.com/russross/blackfriday/v2 => /home/mic/projects/blackfriday
 // replace www.velocidex.com/golang/vtypes => /home/mic/projects/vtypes
+
 // replace github.com/Velocidex/zip => /home/mic/projects/zip
+// replace github.com/Velocidex/sflags => /home/mic/projects/sflags
 
 replace github.com/russross/blackfriday/v2 => github.com/Velocidex/blackfriday/v2 v2.0.2-0.20200811050547-4f26a09e2b3b
 
-go 1.13
+go 1.14
 
 replace github.com/alecthomas/chroma => github.com/Velocidex/chroma v0.6.8-0.20200418131129-82edc291369c

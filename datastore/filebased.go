@@ -37,6 +37,7 @@
 package datastore
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -46,10 +47,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/golang/protobuf/jsonpb"
-	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	errors "github.com/pkg/errors"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	config_proto "www.velocidex.com/golang/velociraptor/config/proto"
 	"www.velocidex.com/golang/velociraptor/constants"
 	crypto_proto "www.velocidex.com/golang/velociraptor/crypto/proto"
@@ -78,8 +79,8 @@ type FileBaseDataStore struct {
 func (self *FileBaseDataStore) GetClientTasks(
 	config_obj *config_proto.Config,
 	client_id string,
-	do_not_lease bool) ([]*crypto_proto.GrrMessage, error) {
-	result := []*crypto_proto.GrrMessage{}
+	do_not_lease bool) ([]*crypto_proto.VeloMessage, error) {
+	result := []*crypto_proto.VeloMessage{}
 	now := uint64(self.clock.Now().UTC().UnixNano() / 1000)
 
 	client_path_manager := paths.NewClientPathManager(client_id)
@@ -99,7 +100,7 @@ func (self *FileBaseDataStore) GetClientTasks(
 
 		// Here we read the task from the task_urn and remove
 		// it from the queue.
-		message := &crypto_proto.GrrMessage{}
+		message := &crypto_proto.VeloMessage{}
 		err = self.GetSubject(config_obj, task_urn, message)
 		if err != nil {
 			continue
@@ -119,7 +120,7 @@ func (self *FileBaseDataStore) GetClientTasks(
 func (self *FileBaseDataStore) UnQueueMessageForClient(
 	config_obj *config_proto.Config,
 	client_id string,
-	message *crypto_proto.GrrMessage) error {
+	message *crypto_proto.VeloMessage) error {
 
 	client_path_manager := paths.NewClientPathManager(client_id)
 	return self.DeleteSubject(config_obj,
@@ -129,7 +130,7 @@ func (self *FileBaseDataStore) UnQueueMessageForClient(
 func (self *FileBaseDataStore) QueueMessageForClient(
 	config_obj *config_proto.Config,
 	client_id string,
-	req *crypto_proto.GrrMessage) error {
+	req *crypto_proto.VeloMessage) error {
 
 	req.TaskId = uint64(self.clock.Now().UTC().UnixNano() / 1000)
 	client_path_manager := paths.NewClientPathManager(client_id)
@@ -137,23 +138,35 @@ func (self *FileBaseDataStore) QueueMessageForClient(
 		client_path_manager.Task(req.TaskId).Path(), req)
 }
 
+/* Gets a protobuf encoded struct from the data store.  Objects are
+   addressed by the urn which is a string (URNs are typically managed
+   by a path manager)
+
+   FIXME: Refactor GetSubject to accept path manager directly.
+*/
 func (self *FileBaseDataStore) GetSubject(
 	config_obj *config_proto.Config,
 	urn string,
 	message proto.Message) error {
 
 	serialized_content, err := readContentFromFile(
-		config_obj, urn, false /* must_exist */)
+		config_obj, urn, true /* must_exist */)
 	if err != nil {
-		return err
+		return errors.WithMessage(os.ErrNotExist,
+			fmt.Sprintf("While openning %v: %v", urn, err))
 	}
 
 	if strings.HasSuffix(urn, ".json") {
-		return jsonpb.UnmarshalString(
-			string(serialized_content), message)
+		err = protojson.Unmarshal(serialized_content, message)
+	} else {
+		err = proto.Unmarshal(serialized_content, message)
 	}
 
-	return proto.Unmarshal(serialized_content, message)
+	if err != nil {
+		return errors.WithMessage(os.ErrNotExist,
+			fmt.Sprintf("While openning %v: %v", urn, err))
+	}
+	return nil
 }
 
 func (self *FileBaseDataStore) Walk(config_obj *config_proto.Config,
@@ -197,14 +210,11 @@ func (self *FileBaseDataStore) SetSubject(
 
 	// Encode as JSON
 	if strings.HasSuffix(urn, ".json") {
-		marshaler := &jsonpb.Marshaler{Indent: " "}
-		serialized_content, err := marshaler.MarshalToString(
-			message)
+		serialized_content, err := protojson.Marshal(message)
 		if err != nil {
 			return err
 		}
-		return writeContentToFile(
-			config_obj, urn, []byte(serialized_content))
+		return writeContentToFile(config_obj, urn, serialized_content)
 	}
 	serialized_content, err := proto.Marshal(message)
 	if err != nil {

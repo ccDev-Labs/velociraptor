@@ -10,9 +10,11 @@ package proto;
 option go_package = "www.velocidex.com/golang/velociraptor/actions/proto";
 
 message VQLRequest {
+    // DEPRECATED: Will be populated for compatibility with older clients.
     string Name = 2 [(sem_type) = {
             description: "The name of this query. This should be descriptive to indicate what type of informaiton the query retrieves.",
         }];
+    // DEPRECATED: Not used any more.
     string Description = 3 [(sem_type) = {
             description: "What this query is supposed to do.",
         }];
@@ -26,10 +28,12 @@ message VQLEnv {
     string value = 2;
 }
 
+// This is the most common type of message - it specifies a query to
+// run on the endpoint.
 message VQLCollectorArgs {
-    option (flow_metadata) = {
-        category: "Generic";
-    };
+    // If this is specified we run this query first and if it returns
+    // any rows we continue with the real query.
+    string precondition = 29;
 
     // The principal that created this request - only sent when
     // scheduling the server so the server may keep track on who ran
@@ -83,7 +87,7 @@ message VQLTypeMap {
 }
 
 message VQLResponse {
-    // Response is encoded in a json array of rows.
+    // DEPRECATED: Response is encoded in a json array of rows.
     string Response = 1 [(sem_type) = {
             description: "JSON encoded response.",
         }];

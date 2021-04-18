@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -35,11 +34,11 @@ import (
 	"www.velocidex.com/golang/velociraptor/services"
 	"www.velocidex.com/golang/velociraptor/utils"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/juju/ratelimit"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/proto"
 	config_proto "www.velocidex.com/golang/velociraptor/config/proto"
 	"www.velocidex.com/golang/velociraptor/constants"
 	crypto_proto "www.velocidex.com/golang/velociraptor/crypto/proto"
@@ -62,7 +61,7 @@ var (
 		Help: "Number of POST requests frontend sent to the client.",
 	})
 
-	// Normally this is calculated in Graphan but it is also
+	// Normally this is calculated in Graphana but it is also
 	// convenient to have an approximation right here.
 	receiveQPS = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "frontend_receive_QPS",
@@ -247,12 +246,6 @@ func control(server_obj *Server) http.Handler {
 	logger := logging.GetLogger(server_obj.config, &logging.FrontendComponent)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-
-		/* Experimental redirection is turned off for now.
-		if maybeRedirectFrontend("control", w, req) {
-			return
-		}
-		*/
 		if !server_obj.throttler.Ready() {
 			loadshedCounter.Inc()
 
@@ -412,13 +405,10 @@ func reader(config_obj *config_proto.Config, server_obj *Server) http.Handler {
 	logger := logging.GetLogger(config_obj, &logging.FrontendComponent)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		/* Experimental redirection is turned off for now.
-		if maybeRedirectFrontend("reader", w, req) {
-			return
-		}
-		*/
 
-		if !server_obj.throttler.Ready() {
+		if false && !server_obj.throttler.Ready() {
+			loadshedCounter.Inc()
+
 			// Load shed connections with a 500 error.
 			http.Error(w, "", http.StatusServiceUnavailable)
 			return
@@ -471,6 +461,10 @@ func reader(config_obj *config_proto.Config, server_obj *Server) http.Handler {
 			return
 		}
 
+		/* This is expensive to enforce in a distributed
+		   setting. It may not be a huge problem anyway so for
+		   now we skip this check.
+
 		if notifier.IsClientConnected(source) {
 			http.Error(w, "Another Client connection exists. "+
 				"Only a single instance of the client is "+
@@ -479,7 +473,7 @@ func reader(config_obj *config_proto.Config, server_obj *Server) http.Handler {
 			fmt.Printf("Source %v Conflict\n", source)
 			return
 		}
-
+		*/
 		notification, cancel := notifier.ListenForNotification(source)
 		defer cancel()
 

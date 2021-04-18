@@ -1,19 +1,22 @@
 package datastore
 
 import (
-	"errors"
 	"fmt"
+	"os"
 	"path"
 	"sort"
 	"strings"
 	"sync"
 
-	"github.com/golang/protobuf/proto"
+	errors "github.com/pkg/errors"
+
 	"github.com/golang/protobuf/ptypes/empty"
+	"google.golang.org/protobuf/proto"
 	config_proto "www.velocidex.com/golang/velociraptor/config/proto"
 	crypto_proto "www.velocidex.com/golang/velociraptor/crypto/proto"
 	"www.velocidex.com/golang/velociraptor/json"
 	"www.velocidex.com/golang/velociraptor/utils"
+	"www.velocidex.com/golang/velociraptor/vtesting"
 )
 
 var (
@@ -23,14 +26,17 @@ var (
 type TestDataStore struct {
 	mu sync.Mutex
 
+	idx         uint64
 	Subjects    map[string]proto.Message
-	ClientTasks map[string][]*crypto_proto.GrrMessage
+	ClientTasks map[string][]*crypto_proto.VeloMessage
+
+	clock vtesting.Clock
 }
 
 func NewTestDataStore() *TestDataStore {
 	return &TestDataStore{
 		Subjects:    make(map[string]proto.Message),
-		ClientTasks: make(map[string][]*crypto_proto.GrrMessage),
+		ClientTasks: make(map[string][]*crypto_proto.VeloMessage),
 	}
 }
 
@@ -47,7 +53,7 @@ func (self *TestDataStore) Clear() {
 	defer self.mu.Unlock()
 
 	self.Subjects = make(map[string]proto.Message)
-	self.ClientTasks = make(map[string][]*crypto_proto.GrrMessage)
+	self.ClientTasks = make(map[string][]*crypto_proto.VeloMessage)
 }
 
 func (self *TestDataStore) Debug() {
@@ -63,7 +69,7 @@ func (self *TestDataStore) Debug() {
 
 func (self *TestDataStore) GetClientTasks(config_obj *config_proto.Config,
 	client_id string,
-	do_not_lease bool) ([]*crypto_proto.GrrMessage, error) {
+	do_not_lease bool) ([]*crypto_proto.VeloMessage, error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
@@ -77,19 +83,50 @@ func (self *TestDataStore) GetClientTasks(config_obj *config_proto.Config,
 func (self *TestDataStore) Walk(
 	config_obj *config_proto.Config,
 	root string, walkFn WalkFunc) error {
+
+	self.mu.Lock()
+	defer self.mu.Unlock()
+
+	root_components := utils.SplitComponents(root)
+
+	is_subpath := func(components []string) bool {
+		if len(root_components) > len(components) {
+			return false
+		}
+
+		for i := 0; i < len(root_components); i++ {
+			if root_components[i] != components[i] {
+				return false
+			}
+		}
+		return true
+	}
+
+	for k := range self.Subjects {
+		components := utils.SplitComponents(k)
+		if !is_subpath(components) {
+			continue
+		}
+
+		walkFn(k)
+	}
+
 	return nil
 }
 
 func (self *TestDataStore) QueueMessageForClient(
 	config_obj *config_proto.Config,
 	client_id string,
-	message *crypto_proto.GrrMessage) error {
+	message *crypto_proto.VeloMessage) error {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
+	message.TaskId = self.idx + 1
+	self.idx++
+
 	result, pres := self.ClientTasks[client_id]
 	if !pres {
-		result = make([]*crypto_proto.GrrMessage, 0)
+		result = make([]*crypto_proto.VeloMessage, 0)
 	}
 
 	result = append(result, message)
@@ -101,16 +138,16 @@ func (self *TestDataStore) QueueMessageForClient(
 func (self *TestDataStore) UnQueueMessageForClient(
 	config_obj *config_proto.Config,
 	client_id string,
-	message *crypto_proto.GrrMessage) error {
+	message *crypto_proto.VeloMessage) error {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
 	old_queue, pres := self.ClientTasks[client_id]
 	if !pres {
-		old_queue = make([]*crypto_proto.GrrMessage, 0)
+		old_queue = make([]*crypto_proto.VeloMessage, 0)
 	}
 
-	new_queue := make([]*crypto_proto.GrrMessage, len(old_queue))
+	new_queue := make([]*crypto_proto.VeloMessage, 0, len(old_queue))
 	for _, item := range old_queue {
 		if message.TaskId != item.TaskId {
 			new_queue = append(new_queue, item)
@@ -128,10 +165,12 @@ func (self *TestDataStore) GetSubject(
 	self.mu.Lock()
 	defer self.mu.Unlock()
 
-	result := self.Subjects[urn]
-	if result != nil {
-		proto.Merge(message, result)
+	result, pres := self.Subjects[urn]
+	if !pres {
+		return errors.WithMessage(os.ErrNotExist,
+			fmt.Sprintf("While openning %v: not found", urn))
 	}
+	proto.Merge(message, result)
 	return nil
 }
 

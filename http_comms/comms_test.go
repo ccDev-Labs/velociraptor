@@ -157,6 +157,9 @@ func (self *CommsTestSuite) SetupTest() {
 	cm := &crypto.NullCryptoManager{}
 	self.empty_response, _ = cm.EncryptMessageList(
 		&crypto_proto.MessageList{}, "C.1234")
+
+	// Disable randomness for the test.
+	Rand = func(int) int { return 0 }
 }
 
 func (self *CommsTestSuite) TearDownTest() {
@@ -180,8 +183,8 @@ func (self *CommsTestSuite) TestAbort() {
 
 	// Not a real executor but we can emulate closing channels.
 	exec := &executor.ClientExecutor{
-		Outbound: make(chan *crypto_proto.GrrMessage),
-		Inbound:  make(chan *crypto_proto.GrrMessage),
+		Outbound: make(chan *crypto_proto.VeloMessage),
+		Inbound:  make(chan *crypto_proto.VeloMessage),
 	}
 
 	crypto_manager := &crypto.NullCryptoManager{}

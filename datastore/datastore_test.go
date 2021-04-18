@@ -1,6 +1,7 @@
 package datastore
 
 import (
+	"os"
 	"sort"
 	"testing"
 	"time"
@@ -20,21 +21,28 @@ type BaseTestSuite struct {
 }
 
 func (self BaseTestSuite) TestSetGetSubject() {
-	message := &crypto_proto.GrrMessage{Source: "Server"}
+	message := &crypto_proto.VeloMessage{Source: "Server"}
 
 	urn := "/a/b/c"
 	err := self.datastore.SetSubject(self.config_obj, urn, message)
 	assert.NoError(self.T(), err)
 
-	read_message := &crypto_proto.GrrMessage{}
+	read_message := &crypto_proto.VeloMessage{}
 	err = self.datastore.GetSubject(self.config_obj, urn, read_message)
 	assert.NoError(self.T(), err)
 
 	assert.Equal(self.T(), message.Source, read_message.Source)
 
-	// Not existing urn returns no error but an empty message
+	// Not existing urn returns os.ErrNotExist error and an empty message
+	read_message.SessionId = "X"
 	err = self.datastore.GetSubject(self.config_obj, urn+"foo", read_message)
-	assert.NoError(self.T(), err)
+	assert.Error(self.T(), err, os.ErrNotExist)
+
+	// Same for json files.
+	read_message.SessionId = "X"
+	err = self.datastore.GetSubject(
+		self.config_obj, urn+"foo.json", read_message)
+	assert.Error(self.T(), err, os.ErrNotExist)
 
 	// Delete the subject
 	err = self.datastore.DeleteSubject(self.config_obj, urn)
@@ -42,13 +50,11 @@ func (self BaseTestSuite) TestSetGetSubject() {
 
 	// It should now be cleared
 	err = self.datastore.GetSubject(self.config_obj, urn, read_message)
-	assert.NoError(self.T(), err)
-
-	assert.Equal(self.T(), "", read_message.Source)
+	assert.Error(self.T(), err, os.ErrNotExist)
 }
 
 func (self BaseTestSuite) TestListChildren() {
-	message := &crypto_proto.GrrMessage{Source: "Server"}
+	message := &crypto_proto.VeloMessage{Source: "Server"}
 
 	urn := "/a/b/c"
 	err := self.datastore.SetSubject(self.config_obj, urn+"/1", message)
@@ -92,7 +98,7 @@ func (self BaseTestSuite) TestListChildren() {
 			visited = append(visited, path_name)
 			return nil
 		})
-
+	sort.Strings(visited)
 	assert.Equal(self.T(), []string{"/a/b/c/1", "/a/b/c/2", "/a/b/c/3"}, visited)
 }
 

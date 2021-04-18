@@ -18,15 +18,13 @@
 package api
 
 import (
+	"context"
 	"errors"
-	"io"
-	"net"
+	"os"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	context "golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"www.velocidex.com/golang/velociraptor/acls"
@@ -43,6 +41,7 @@ import (
 )
 
 func GetApiClient(
+	ctx context.Context,
 	config_obj *config_proto.Config,
 	server_obj *server.Server,
 	client_id string, detailed bool) (
@@ -56,7 +55,7 @@ func GetApiClient(
 		ClientId: client_id,
 	}
 
-	// Special well know client id.
+	// Special well known client id.
 	if client_id == "server" {
 		return result, nil
 	}
@@ -74,8 +73,7 @@ func GetApiClient(
 	result.Labels = services.GetLabeler().GetClientLabels(config_obj, client_id)
 
 	client_info := &actions_proto.ClientInfo{}
-	err = db.GetSubject(config_obj,
-		client_path_manager.Path(), client_info)
+	err = db.GetSubject(config_obj, client_path_manager.Path(), client_info)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +95,8 @@ func GetApiClient(
 	err = db.GetSubject(config_obj, client_path_manager.Key().Path(),
 		public_key_info)
 	if err != nil {
-		return nil, err
+		// Offline clients do not have public key files, so
+		// this is not actually an error.
 	}
 
 	result.FirstSeenAt = public_key_info.EnrollTime
@@ -105,44 +104,21 @@ func GetApiClient(
 	err = db.GetSubject(config_obj, client_path_manager.Ping().Path(),
 		client_info)
 	if err != nil {
-		return nil, err
+		// Offline clients do not have public key files, so
+		// this is not actually an error.
 	}
 
 	result.LastSeenAt = client_info.Ping
 	result.LastIp = client_info.IpAddress
 
-	// Update the time to now if the client is currently actually
-	// connected.
-	if server_obj != nil &&
-		services.GetNotifier().IsClientConnected(client_id) {
+	if server_obj != nil && detailed &&
+		// Wait up to 2 seconds to find out if clients are connected.
+		services.GetNotifier().IsClientConnected(ctx,
+			config_obj, client_id, 2) {
 		result.LastSeenAt = uint64(time.Now().UnixNano() / 1000)
 	}
 
-	remote_address := strings.Split(result.LastIp, ":")[0]
-	if _is_ip_in_ranges(remote_address, config_obj.GUI.InternalCidr) {
-		result.LastIpClass = api_proto.ApiClient_INTERNAL
-	} else if _is_ip_in_ranges(remote_address, config_obj.GUI.InternalCidr) {
-		result.LastIpClass = api_proto.ApiClient_VPN
-	} else {
-		result.LastIpClass = api_proto.ApiClient_EXTERNAL
-	}
-
 	return result, nil
-}
-
-func _is_ip_in_ranges(remote string, ranges []string) bool {
-	for _, ip_range := range ranges {
-		_, ipNet, err := net.ParseCIDR(ip_range)
-		if err != nil {
-			return false
-		}
-
-		if ipNet.Contains(net.ParseIP(remote)) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (self *ApiServer) GetClientMetadata(
@@ -169,7 +145,7 @@ func (self *ApiServer) GetClientMetadata(
 
 	result := &api_proto.ClientMetadata{}
 	err = db.GetSubject(self.config, client_path_manager.Metadata(), result)
-	if err != nil && err == io.EOF {
+	if errors.Is(err, os.ErrNotExist) {
 		// Metadata not set, start with empty set.
 		err = nil
 	}
@@ -210,7 +186,7 @@ func (self *ApiServer) GetClient(
 			"User is not allowed to view clients.")
 	}
 
-	api_client, err := GetApiClient(
+	api_client, err := GetApiClient(ctx,
 		self.config,
 		self.server_obj,
 		in.ClientId,

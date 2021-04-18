@@ -4,7 +4,8 @@ package clients
 
 import (
 	"context"
-	"io"
+	"errors"
+	"os"
 
 	"github.com/Velocidex/ordereddict"
 	"www.velocidex.com/golang/velociraptor/acls"
@@ -58,7 +59,7 @@ func (self *ClientMetadataFunction) Call(ctx context.Context,
 	result := &api_proto.ClientMetadata{}
 	err = db.GetSubject(config_obj,
 		client_path_manager.Metadata(), result)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		scope.Log("client_metadata: %s", err.Error())
 		return vfilter.Null{}
 	}

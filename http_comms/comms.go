@@ -47,6 +47,8 @@ import (
 
 var (
 	RedirectError = errors.New("RedirectError")
+
+	Rand func(int) int = rand.Intn
 )
 
 // Responsible for maybe enrolling the client. Enrollments should not
@@ -78,7 +80,7 @@ func (self *Enroller) MaybeEnrol() {
 		self.last_enrollment_time = time.Now()
 		self.logger.Info("Enrolling")
 
-		go self.executor.SendToServer(&crypto_proto.GrrMessage{
+		go self.executor.SendToServer(&crypto_proto.VeloMessage{
 			SessionId: constants.ENROLLMENT_WELL_KNOWN_FLOW,
 			CSR: &crypto_proto.Certificate{
 				Type: crypto_proto.Certificate_CSR,
@@ -99,7 +101,7 @@ func (self *Enroller) GetMessageList() *crypto_proto.MessageList {
 		return &crypto_proto.MessageList{}
 	}
 	return &crypto_proto.MessageList{
-		Job: []*crypto_proto.GrrMessage{{
+		Job: []*crypto_proto.VeloMessage{{
 			SessionId: constants.FOREMAN_WELL_KNOWN_FLOW,
 			ForemanCheckin: &actions_proto.ForemanCheckin{
 				LastHuntTimestamp: self.config_obj.Writeback.HuntLastTimestamp,
@@ -193,6 +195,11 @@ func NewHTTPConnector(
 		manager:    manager,
 		logger:     logger,
 		clock:      clock,
+
+		// Start with a random URL from the set of
+		// preconfigured URLs. This should distribute clients
+		// randomly to all frontends.
+		current_url_idx: Rand(len(urls)),
 
 		minPoll:    time.Duration(1) * time.Second,
 		maxPoll:    time.Duration(max_poll) * time.Second,
@@ -310,7 +317,7 @@ func (self *HTTPConnector) Post(handler string, data []byte, urgent bool) (
 			// For safety we wait after redirect in case we end up
 			// in a redirect loop.
 			wait := self.maxPoll + time.Duration(
-				rand.Intn(int(self.maxPollDev)))*time.Second
+				Rand(int(self.maxPollDev)))*time.Second
 			self.logger.Info("Waiting after redirect: %v", wait)
 			<-self.clock.After(wait)
 		}
@@ -352,7 +359,7 @@ func (self *HTTPConnector) advanceToNextServer() {
 	// sleep to back off.
 	if self.current_url_idx == self.last_success_idx {
 		wait := self.maxPoll + time.Duration(
-			rand.Intn(int(self.maxPollDev)))*time.Second
+			Rand(int(self.maxPollDev)))*time.Second
 
 		self.logger.Info(
 			"Waiting for a reachable server: %v", wait)
@@ -542,7 +549,7 @@ func (self *NotificationReader) sendMessageList(
 			// Add random wait between polls to avoid
 			// synchronization of endpoints.
 			wait := self.maxPoll + time.Duration(
-				rand.Intn(int(self.maxPollDev)))*time.Second
+				Rand(int(self.maxPollDev)))*time.Second
 			self.logger.Info("Sleeping for %v", wait)
 
 			select {
@@ -602,10 +609,12 @@ func (self *NotificationReader) sendToURL(
 
 	// We need to be able to cancel the read here so we do not use
 	// ioutil.ReadAll()
-	_, err = utils.Copy(ctx, encrypted, resp.Body)
+	n, err := utils.Copy(ctx, encrypted, resp.Body)
 	if err != nil {
 		return errors.WithStack(err)
 	}
+
+	self.logger.Info("%s: received %d bytes", self.name, n)
 
 	message_info, err := self.manager.Decrypt(encrypted.Bytes())
 	if err != nil {
@@ -613,7 +622,7 @@ func (self *NotificationReader) sendToURL(
 	}
 
 	return message_info.IterateJobs(ctx,
-		func(ctx context.Context, msg *crypto_proto.GrrMessage) {
+		func(ctx context.Context, msg *crypto_proto.VeloMessage) {
 
 			// Abort the client, but leave the client
 			// running a bit to send acks. NOTE: This has
@@ -681,7 +690,7 @@ func (self *NotificationReader) Start(ctx context.Context) {
 // message in every reader message to improve hunt latency.
 func (self *NotificationReader) GetMessageList() *crypto_proto.MessageList {
 	return &crypto_proto.MessageList{
-		Job: []*crypto_proto.GrrMessage{{
+		Job: []*crypto_proto.VeloMessage{{
 			SessionId: constants.FOREMAN_WELL_KNOWN_FLOW,
 			ForemanCheckin: &actions_proto.ForemanCheckin{
 				LastEventTableVersion: actions.GlobalEventTableVersion(),

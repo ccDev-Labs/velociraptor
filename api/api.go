@@ -20,7 +20,6 @@ package api
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -29,6 +28,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	errors "github.com/pkg/errors"
 
 	"github.com/Velocidex/ordereddict"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -57,7 +58,6 @@ import (
 	"www.velocidex.com/golang/velociraptor/server"
 	"www.velocidex.com/golang/velociraptor/services"
 	users "www.velocidex.com/golang/velociraptor/users"
-	"www.velocidex.com/golang/velociraptor/utils"
 	vql_subsystem "www.velocidex.com/golang/velociraptor/vql"
 	"www.velocidex.com/golang/vfilter"
 )
@@ -445,7 +445,9 @@ func (self *ApiServer) ListClients(
 			result.Names = append(result.Names, client_id)
 		} else {
 			api_client, err := GetApiClient(
-				self.config, self.server_obj, client_id, false)
+				ctx, self.config,
+				self.server_obj, client_id,
+				false /* detailed */)
 			if err != nil {
 				continue
 			}
@@ -611,23 +613,6 @@ func (self *ApiServer) SetGUIOptions(
 	defer Instrument("SetGUIOptions")()
 
 	return &empty.Empty{}, users.SetUserOptions(self.config, user_info.Name, in)
-}
-
-func (self *ApiServer) GetUserNotifications(
-	ctx context.Context,
-	in *api_proto.GetUserNotificationsRequest) (
-	*api_proto.GetUserNotificationsResponse, error) {
-	result, err := users.GetUserNotifications(
-		self.config, GetGRPCUserInfo(self.config, ctx).Name, in.ClearPending)
-	return result, err
-}
-
-func (self *ApiServer) GetUserNotificationCount(
-	ctx context.Context,
-	in *empty.Empty) (*api_proto.UserNotificationCount, error) {
-	n, err := users.GetUserNotificationCount(
-		self.config, GetGRPCUserInfo(self.config, ctx).Name)
-	return &api_proto.UserNotificationCount{Count: n}, err
 }
 
 func (self *ApiServer) VFSListDirectory(
@@ -907,73 +892,6 @@ func (self *ApiServer) SetArtifactFile(
 	return &api_proto.APIResponse{}, nil
 }
 
-func (self *ApiServer) WriteEvent(
-	ctx context.Context,
-	in *actions_proto.VQLResponse) (*empty.Empty, error) {
-
-	// Get the TLS context from the peer and verify its
-	// certificate.
-	peer, ok := peer.FromContext(ctx)
-	if !ok {
-		return nil, status.Error(codes.InvalidArgument, "cant get peer info")
-	}
-
-	tlsInfo, ok := peer.AuthInfo.(credentials.TLSInfo)
-	if !ok {
-		return nil, status.Error(codes.InvalidArgument, "unable to get credentials")
-	}
-
-	// Authenticate API clients using certificates.
-	for _, peer_cert := range tlsInfo.State.PeerCertificates {
-		chains, err := peer_cert.Verify(
-			x509.VerifyOptions{Roots: self.ca_pool})
-		if err != nil {
-			return nil, err
-		}
-
-		if len(chains) == 0 {
-			return nil, status.Error(codes.InvalidArgument, "no chains verified")
-		}
-
-		peer_name := crypto.GetSubjectName(peer_cert)
-
-		token, err := acls.GetEffectivePolicy(self.config, peer_name)
-		if err != nil {
-			return nil, err
-		}
-
-		// Check that the principal is allowed to push to the queue.
-		ok, err := acls.CheckAccessWithToken(token, acls.PUBLISH, in.Query.Name)
-		if err != nil {
-			return nil, err
-		}
-
-		if !ok {
-			return nil, status.Error(codes.PermissionDenied,
-				"Permission denied: PUBLISH "+peer_name+" to "+in.Query.Name)
-		}
-
-		rows, err := utils.ParseJsonToDicts([]byte(in.Response))
-		if err != nil {
-			return nil, err
-		}
-
-		// Only return the first row
-		if true {
-			journal, err := services.GetJournal()
-			if err != nil {
-				return nil, err
-			}
-
-			err = journal.PushRowsToArtifact(self.config,
-				rows, in.Query.Name, peer_name, "")
-			return &empty.Empty{}, err
-		}
-	}
-
-	return nil, status.Error(codes.InvalidArgument, "no peer certs?")
-}
-
 func (self *ApiServer) Query(
 	in *actions_proto.VQLCollectorArgs,
 	stream api_proto.API_QueryServer) error {
@@ -1211,7 +1129,7 @@ func startAPIServer(
 
 	lis, err := net.Listen(config_obj.API.BindScheme, bind_addr)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	// Use the server certificate to secure the gRPC connection.
@@ -1219,7 +1137,7 @@ func startAPIServer(
 		[]byte(config_obj.Frontend.Certificate),
 		[]byte(config_obj.Frontend.PrivateKey))
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	// Authenticate API clients using certificates.

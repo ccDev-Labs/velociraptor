@@ -20,10 +20,15 @@ package datastore
 
 import (
 	"errors"
+	"sync"
 
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 	config_proto "www.velocidex.com/golang/velociraptor/config/proto"
 	crypto_proto "www.velocidex.com/golang/velociraptor/crypto/proto"
+)
+
+var (
+	mu sync.Mutex
 )
 
 type SortingSense int
@@ -41,18 +46,21 @@ type DataStore interface {
 	GetClientTasks(
 		config_obj *config_proto.Config,
 		client_id string,
-		do_not_lease bool) ([]*crypto_proto.GrrMessage, error)
+		do_not_lease bool) ([]*crypto_proto.VeloMessage, error)
 
 	UnQueueMessageForClient(
 		config_obj *config_proto.Config,
 		client_id string,
-		message *crypto_proto.GrrMessage) error
+		message *crypto_proto.VeloMessage) error
 
 	QueueMessageForClient(
 		config_obj *config_proto.Config,
 		client_id string,
-		message *crypto_proto.GrrMessage) error
+		message *crypto_proto.VeloMessage) error
 
+	// Reads a stored message from the datastore. If there is no
+	// stored message at this URN, the function returns an
+	// os.ErrNotExist error.
 	GetSubject(
 		config_obj *config_proto.Config,
 		urn string,
@@ -114,9 +122,6 @@ func GetDB(config_obj *config_proto.Config) (DataStore, error) {
 	switch config_obj.Datastore.Implementation {
 	case "FileBaseDataStore":
 		return file_based_imp, nil
-
-	case "MySQL":
-		return NewMySQLDataStore(config_obj)
 
 	case "Test":
 		mu.Lock()

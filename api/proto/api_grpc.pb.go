@@ -40,8 +40,6 @@ type APIClient interface {
 	// Users
 	GetUserUITraits(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*ApiGrrUser, error)
 	SetGUIOptions(ctx context.Context, in *SetGUIOptionsRequest, opts ...grpc.CallOption) (*empty.Empty, error)
-	GetUserNotifications(ctx context.Context, in *GetUserNotificationsRequest, opts ...grpc.CallOption) (*GetUserNotificationsResponse, error)
-	GetUserNotificationCount(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*UserNotificationCount, error)
 	// List all the GUI users known on this server.
 	GetUsers(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*Users, error)
 	// VFS
@@ -97,6 +95,10 @@ type APIClient interface {
 	VFSGetBuffer(ctx context.Context, in *VFSFileBuffer, opts ...grpc.CallOption) (*VFSFileBuffer, error)
 	// Streaming free form VQL.
 	Query(ctx context.Context, in *proto2.VQLCollectorArgs, opts ...grpc.CallOption) (API_QueryClient, error)
+	// Watch for events from the master.
+	WatchEvent(ctx context.Context, in *EventRequest, opts ...grpc.CallOption) (API_WatchEventClient, error)
+	// Push the events to the master
+	PushEvents(ctx context.Context, in *PushEventRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 	// Push monitoring event to the server.
 	WriteEvent(ctx context.Context, in *proto2.VQLResponse, opts ...grpc.CallOption) (*empty.Empty, error)
 }
@@ -238,24 +240,6 @@ func (c *aPIClient) GetUserUITraits(ctx context.Context, in *empty.Empty, opts .
 func (c *aPIClient) SetGUIOptions(ctx context.Context, in *SetGUIOptionsRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
 	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/proto.API/SetGUIOptions", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *aPIClient) GetUserNotifications(ctx context.Context, in *GetUserNotificationsRequest, opts ...grpc.CallOption) (*GetUserNotificationsResponse, error) {
-	out := new(GetUserNotificationsResponse)
-	err := c.cc.Invoke(ctx, "/proto.API/GetUserNotifications", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *aPIClient) GetUserNotificationCount(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*UserNotificationCount, error) {
-	out := new(UserNotificationCount)
-	err := c.cc.Invoke(ctx, "/proto.API/GetUserNotificationCount", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -618,6 +602,47 @@ func (x *aPIQueryClient) Recv() (*proto2.VQLResponse, error) {
 	return m, nil
 }
 
+func (c *aPIClient) WatchEvent(ctx context.Context, in *EventRequest, opts ...grpc.CallOption) (API_WatchEventClient, error) {
+	stream, err := c.cc.NewStream(ctx, &API_ServiceDesc.Streams[1], "/proto.API/WatchEvent", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &aPIWatchEventClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type API_WatchEventClient interface {
+	Recv() (*EventResponse, error)
+	grpc.ClientStream
+}
+
+type aPIWatchEventClient struct {
+	grpc.ClientStream
+}
+
+func (x *aPIWatchEventClient) Recv() (*EventResponse, error) {
+	m := new(EventResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *aPIClient) PushEvents(ctx context.Context, in *PushEventRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
+	err := c.cc.Invoke(ctx, "/proto.API/PushEvents", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *aPIClient) WriteEvent(ctx context.Context, in *proto2.VQLResponse, opts ...grpc.CallOption) (*empty.Empty, error) {
 	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/proto.API/WriteEvent", in, out, opts...)
@@ -649,8 +674,6 @@ type APIServer interface {
 	// Users
 	GetUserUITraits(context.Context, *empty.Empty) (*ApiGrrUser, error)
 	SetGUIOptions(context.Context, *SetGUIOptionsRequest) (*empty.Empty, error)
-	GetUserNotifications(context.Context, *GetUserNotificationsRequest) (*GetUserNotificationsResponse, error)
-	GetUserNotificationCount(context.Context, *empty.Empty) (*UserNotificationCount, error)
 	// List all the GUI users known on this server.
 	GetUsers(context.Context, *empty.Empty) (*Users, error)
 	// VFS
@@ -706,6 +729,10 @@ type APIServer interface {
 	VFSGetBuffer(context.Context, *VFSFileBuffer) (*VFSFileBuffer, error)
 	// Streaming free form VQL.
 	Query(*proto2.VQLCollectorArgs, API_QueryServer) error
+	// Watch for events from the master.
+	WatchEvent(*EventRequest, API_WatchEventServer) error
+	// Push the events to the master
+	PushEvents(context.Context, *PushEventRequest) (*empty.Empty, error)
 	// Push monitoring event to the server.
 	WriteEvent(context.Context, *proto2.VQLResponse) (*empty.Empty, error)
 	mustEmbedUnimplementedAPIServer()
@@ -759,12 +786,6 @@ func (UnimplementedAPIServer) GetUserUITraits(context.Context, *empty.Empty) (*A
 }
 func (UnimplementedAPIServer) SetGUIOptions(context.Context, *SetGUIOptionsRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetGUIOptions not implemented")
-}
-func (UnimplementedAPIServer) GetUserNotifications(context.Context, *GetUserNotificationsRequest) (*GetUserNotificationsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetUserNotifications not implemented")
-}
-func (UnimplementedAPIServer) GetUserNotificationCount(context.Context, *empty.Empty) (*UserNotificationCount, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetUserNotificationCount not implemented")
 }
 func (UnimplementedAPIServer) GetUsers(context.Context, *empty.Empty) (*Users, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetUsers not implemented")
@@ -876,6 +897,12 @@ func (UnimplementedAPIServer) VFSGetBuffer(context.Context, *VFSFileBuffer) (*VF
 }
 func (UnimplementedAPIServer) Query(*proto2.VQLCollectorArgs, API_QueryServer) error {
 	return status.Errorf(codes.Unimplemented, "method Query not implemented")
+}
+func (UnimplementedAPIServer) WatchEvent(*EventRequest, API_WatchEventServer) error {
+	return status.Errorf(codes.Unimplemented, "method WatchEvent not implemented")
+}
+func (UnimplementedAPIServer) PushEvents(context.Context, *PushEventRequest) (*empty.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PushEvents not implemented")
 }
 func (UnimplementedAPIServer) WriteEvent(context.Context, *proto2.VQLResponse) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method WriteEvent not implemented")
@@ -1159,42 +1186,6 @@ func _API_SetGUIOptions_Handler(srv interface{}, ctx context.Context, dec func(i
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(APIServer).SetGUIOptions(ctx, req.(*SetGUIOptionsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _API_GetUserNotifications_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetUserNotificationsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(APIServer).GetUserNotifications(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/proto.API/GetUserNotifications",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(APIServer).GetUserNotifications(ctx, req.(*GetUserNotificationsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _API_GetUserNotificationCount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(empty.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(APIServer).GetUserNotificationCount(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/proto.API/GetUserNotificationCount",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(APIServer).GetUserNotificationCount(ctx, req.(*empty.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1868,6 +1859,45 @@ func (x *aPIQueryServer) Send(m *proto2.VQLResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _API_WatchEvent_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(EventRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(APIServer).WatchEvent(m, &aPIWatchEventServer{stream})
+}
+
+type API_WatchEventServer interface {
+	Send(*EventResponse) error
+	grpc.ServerStream
+}
+
+type aPIWatchEventServer struct {
+	grpc.ServerStream
+}
+
+func (x *aPIWatchEventServer) Send(m *EventResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _API_PushEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PushEventRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(APIServer).PushEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.API/PushEvents",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(APIServer).PushEvents(ctx, req.(*PushEventRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _API_WriteEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(proto2.VQLResponse)
 	if err := dec(in); err != nil {
@@ -1952,14 +1982,6 @@ var API_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetGUIOptions",
 			Handler:    _API_SetGUIOptions_Handler,
-		},
-		{
-			MethodName: "GetUserNotifications",
-			Handler:    _API_GetUserNotifications_Handler,
-		},
-		{
-			MethodName: "GetUserNotificationCount",
-			Handler:    _API_GetUserNotificationCount_Handler,
 		},
 		{
 			MethodName: "GetUsers",
@@ -2106,6 +2128,10 @@ var API_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _API_VFSGetBuffer_Handler,
 		},
 		{
+			MethodName: "PushEvents",
+			Handler:    _API_PushEvents_Handler,
+		},
+		{
 			MethodName: "WriteEvent",
 			Handler:    _API_WriteEvent_Handler,
 		},
@@ -2114,6 +2140,11 @@ var API_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Query",
 			Handler:       _API_Query_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "WatchEvent",
+			Handler:       _API_WatchEvent_Handler,
 			ServerStreams: true,
 		},
 	},

@@ -22,6 +22,7 @@ package windows
 
 import (
 	"context"
+	"debug/pe"
 	"runtime"
 	"syscall"
 	"time"
@@ -53,6 +54,8 @@ type Win32_Process struct {
 	System          float64 `json:"system"`
 	IoCounters      *IO_COUNTERS
 	Memory          *PROCESS_MEMORY_COUNTERS
+	PebBaseAddress  uint64
+	IsWow64         bool
 }
 
 type MemoryInfoStat struct {
@@ -120,6 +123,26 @@ func (self *Win32_Process) getCmdLine(handle syscall.Handle) {
 		(*byte)(unsafe.Pointer(&buffer[0])), uint32(len(buffer)), &length)
 	if status == STATUS_SUCCESS {
 		self.CommandLine = (*UNICODE_STRING)(unsafe.Pointer(&buffer[0])).String()
+	}
+}
+
+func (self *Win32_Process) getProcessInfo(handle syscall.Handle) {
+	handle_info := PROCESS_BASIC_INFORMATION{}
+	var length uint32
+	var processMachine, nativeMachine uint16
+	err := windows.IsWow64Process2(
+		windows.Handle(handle), &processMachine, &nativeMachine)
+	if err == nil {
+		if processMachine == pe.IMAGE_FILE_MACHINE_I386 {
+			self.IsWow64 = true
+		}
+	}
+
+	status := NtQueryInformationProcess(handle, ProcessBasicInformation,
+		(*byte)(unsafe.Pointer(&handle_info)),
+		uint32(unsafe.Sizeof(handle_info)), &length)
+	if status == STATUS_SUCCESS {
+		self.PebBaseAddress = handle_info.PebBaseAddress
 	}
 }
 
@@ -217,6 +240,7 @@ func (self PslistPlugin) Call(
 				proc_handle, err := info.getHandle()
 				if err == nil {
 					info.getCmdLine(proc_handle)
+					info.getProcessInfo(proc_handle)
 					info.getBinary(proc_handle)
 					info.getUsername(proc_handle)
 					info.getTimes(proc_handle)

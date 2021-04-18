@@ -90,7 +90,7 @@ func GetFlows(
 
 			collection_context := &flows_proto.ArtifactCollectorContext{}
 			err := db.GetSubject(config_obj, urn, collection_context)
-			if err != nil {
+			if err != nil || collection_context.SessionId == "" {
 				logging.GetLogger(
 					config_obj, &logging.FrontendComponent).
 					Error("Unable to open collection: %v", err)
@@ -268,7 +268,7 @@ func CancelFlow(
 	// Queue a cancellation message to the client for this flow
 	// id.
 	err = db.QueueMessageForClient(config_obj, client_id,
-		&crypto_proto.GrrMessage{
+		&crypto_proto.VeloMessage{
 			Cancel:    &crypto_proto.Cancel{},
 			SessionId: flow_id,
 		})
